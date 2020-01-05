@@ -2,14 +2,15 @@ package tr.com.bbm419.parkingspotdetector;
 
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
-import android.graphics.Matrix;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.location.Location;
 import android.os.Handler;
 import android.view.View;
 import android.widget.ImageButton;
+import android.widget.TextView;
 import androidx.annotation.DrawableRes;
+import androidx.cardview.widget.CardView;
 import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.fragment.app.FragmentActivity;
 import android.os.Bundle;
@@ -21,7 +22,6 @@ import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
-import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
@@ -30,17 +30,22 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.tasks.OnSuccessListener;
+import java.util.ArrayList;
+import java.util.List;
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback,
                                                               GoogleMap.OnCameraMoveStartedListener,
-                                                              View.OnClickListener{
+                                                              View.OnClickListener,
+                                                              GoogleMap.OnMarkerClickListener {
 
     private static final float                       INITIAL_ZOOM      = 9.1f;
     private static final float                       INITIAL_BEARING   = 0f;
     private static final long                        PERIOD_MAP_UPDATE = 500;
     private static final float                       MY_LOCATION_ZOOM  = 15f;
 
-    LatLng home = new LatLng(39.960873, 32.867186);
+    private LatLng home = new LatLng(39.960873, 32.867186);
+    private LatLng bahceli = new LatLng(39.931609, 32.824856);
+    private LatLng armada = new LatLng(39.915836, 32.803559);
 
     private GoogleMap                   mMap;
     private FusedLocationProviderClient fusedLocationProviderClient;
@@ -60,6 +65,16 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     private ImageButton myLocation;
 
+    private SpotDetectorModel cameraHome;
+    private SpotDetectorModel cameraBahceli;
+
+    private List<SpotDetectorModel> cameraMarkers = new ArrayList<>();
+
+    private CardView cardInfo;
+    private TextView name;
+    private TextView address;
+    private TextView emptySpots;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -67,6 +82,13 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         myLocation = findViewById(R.id.image_button_location);
         myLocation.setOnClickListener(this);
+
+        cardInfo = findViewById(R.id.card_info);
+        cardInfo.setVisibility(View.GONE);
+
+        name = findViewById(R.id.camera_name);
+        address = findViewById(R.id.camera_address);
+        emptySpots = findViewById(R.id.empty_spots);
 
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(
             MapsActivity.this);
@@ -133,6 +155,11 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 handler.postDelayed(this, PERIOD_MAP_UPDATE);
             }
         };
+
+        cameraBahceli = new SpotDetectorModel("Bahcelievler 7. cadde", "7. CADDE", 5, bahceli);
+        cameraHome = new SpotDetectorModel("Arılık Sokak 4/5", "HOME", 0, home);
+        cameraMarkers.add(cameraBahceli);
+        cameraMarkers.add(cameraHome);
     }
 
     @Override
@@ -144,8 +171,10 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         //mMap.moveCamera(CameraUpdateFactory.newLatLng(home));
         mMap.getUiSettings().setMapToolbarEnabled(false);
         mMap.setOnCameraMoveStartedListener(this);
+        mMap.setOnMarkerClickListener(this);
         driverMarker = mMap.addMarker(markerOptions);
         follow();
+        setCameraMarkers(cameraMarkers);
     }
 
     @Override
@@ -192,12 +221,24 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     public void onCameraMoveStarted(int i) {
         if (i == REASON_GESTURE) {
             unfollow();
+            cardInfo.setVisibility(View.GONE);
         }
+    }
+
+    @Override
+    public boolean onMarkerClick(Marker marker) {
+        for (SpotDetectorModel detectorModel : cameraMarkers) {
+            if (detectorModel.getCameraMarker().equals(marker)) {
+                displayCardInfo(detectorModel);
+            }
+        }
+        return false;
     }
 
     private void follow() {
         myLocation.setImageResource(R.drawable.ic_my_location_found);
         isFollow = true;
+        cardInfo.setVisibility(View.GONE);
         restartMapRunnableImmediate();
     }
 
@@ -240,6 +281,25 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         } else {
             markerOptions.position(lastKnownLocation);
         }
+    }
+
+    private void setCameraMarkers(List<SpotDetectorModel> detectorModels) {
+        for (SpotDetectorModel detectorModel : detectorModels) {
+            detectorModel.setCameraMarker(mMap.addMarker(
+                new MarkerOptions().position(detectorModel.getCameraLocation())
+                    .icon(BitmapDescriptorFactory.fromBitmap(buildIcon(R.drawable.ic_linked_camera_map_icon)))));
+        }
+    }
+
+    private void displayCardInfo(SpotDetectorModel detectorModel) {
+        cardInfo.setVisibility(View.VISIBLE);
+        name = findViewById(R.id.camera_name);
+        address = findViewById(R.id.camera_address);
+        emptySpots = findViewById(R.id.empty_spots);
+
+        name.setText(detectorModel.getCameraName());
+        address.setText(detectorModel.getAddress());
+        emptySpots.setText(String.valueOf(detectorModel.getEmptySpots()));
     }
 
     @Override
