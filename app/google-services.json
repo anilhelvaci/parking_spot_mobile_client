@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "587398246168",
+    "firebase_url": "https://parkingspotdetector-d8726.firebaseio.com",
+    "project_id": "parkingspotdetector-d8726",
+    "storage_bucket": "parkingspotdetector-d8726.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:587398246168:android:ad6ca0811fd9bd81a8386d",
+        "android_client_info": {
+          "package_name": "tr.com.bbm419.parkingspotdetector"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "587398246168-22g06uic8d97l0l3861pduh3oe977cc2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAf3f-wcSr3DI-zWAPZkp2O_zCwsOuOTTI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "587398246168-22g06uic8d97l0l3861pduh3oe977cc2.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
