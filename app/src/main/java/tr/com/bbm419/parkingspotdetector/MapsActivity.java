@@ -27,16 +27,22 @@ import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.LatLngBounds;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.maps.model.Polyline;
+import com.google.android.gms.maps.model.PolylineOptions;
 import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.maps.android.PolyUtil;
 import java.util.ArrayList;
 import java.util.List;
+import tr.com.bbm419.parkingspotdetector.models.DirectionInfo;
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback,
                                                               GoogleMap.OnCameraMoveStartedListener,
                                                               View.OnClickListener,
-                                                              GoogleMap.OnMarkerClickListener {
+                                                              GoogleMap.OnMarkerClickListener,
+                                                              MapMvp.MapView {
 
     private static final float                       INITIAL_ZOOM      = 9.1f;
     private static final float                       INITIAL_BEARING   = 0f;
@@ -56,6 +62,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private Marker driverMarker;
     private Bitmap driverIcon;
     private MarkerOptions markerOptions;
+    private PolylineOptions polylineOptions;
+    private List<Polyline> polylines = new ArrayList<>();
+    private Polyline currentPolyline;
 
     private float   bearing = 0;
     private boolean isFollow;
@@ -67,6 +76,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     private SpotDetectorModel cameraHome;
     private SpotDetectorModel cameraBahceli;
+    private SpotDetectorModel cameraArmada;
+    private SpotDetectorModel currentDetector;
 
     private List<SpotDetectorModel> cameraMarkers = new ArrayList<>();
 
@@ -74,14 +85,26 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private TextView name;
     private TextView address;
     private TextView emptySpots;
+    private TextView durationDistance;
+    private TextView possibility;
+    private ImageButton imageButtonClearLayers;
+
+    private MapPresenter mapPresenter;
+
+    private DirectionInfo directionInfo;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_maps);
 
+        mapPresenter = new MapPresenter();
+        mapPresenter.setView(this);
+
         myLocation = findViewById(R.id.image_button_location);
+        imageButtonClearLayers = findViewById(R.id.image_button_clear_layers);
         myLocation.setOnClickListener(this);
+        imageButtonClearLayers.setOnClickListener(this);
 
         cardInfo = findViewById(R.id.card_info);
         cardInfo.setVisibility(View.GONE);
@@ -89,6 +112,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         name = findViewById(R.id.camera_name);
         address = findViewById(R.id.camera_address);
         emptySpots = findViewById(R.id.empty_spots);
+        durationDistance = findViewById(R.id.duration_distance);
+        possibility  =findViewById(R.id.parking_probability);
 
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(
             MapsActivity.this);
@@ -158,8 +183,10 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         cameraBahceli = new SpotDetectorModel("Bahcelievler 7. cadde", "7. CADDE", 5, bahceli);
         cameraHome = new SpotDetectorModel("Arılık Sokak 4/5", "HOME", 0, home);
+        cameraArmada = new SpotDetectorModel("Dumlupınar Bulvarı", "Armada", 28, armada);
         cameraMarkers.add(cameraBahceli);
         cameraMarkers.add(cameraHome);
+        cameraMarkers.add(cameraArmada);
     }
 
     @Override
@@ -221,7 +248,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     public void onCameraMoveStarted(int i) {
         if (i == REASON_GESTURE) {
             unfollow();
-            cardInfo.setVisibility(View.GONE);
         }
     }
 
@@ -229,7 +255,14 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     public boolean onMarkerClick(Marker marker) {
         for (SpotDetectorModel detectorModel : cameraMarkers) {
             if (detectorModel.getCameraMarker().equals(marker)) {
-                displayCardInfo(detectorModel);
+                String origin = lastKnownLocation.latitude + "," + lastKnownLocation.longitude;
+                String destination = detectorModel.getCameraLocation().latitude
+                    + ","
+                    + detectorModel.getCameraLocation().longitude;
+                mapPresenter.getDirectionInfo(origin, destination);
+                currentDetector = detectorModel;
+                clearPolyline();
+                imageButtonClearLayers.setVisibility(View.VISIBLE);
             }
         }
         return false;
@@ -239,6 +272,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         myLocation.setImageResource(R.drawable.ic_my_location_found);
         isFollow = true;
         cardInfo.setVisibility(View.GONE);
+        clearPolyline();
+        imageButtonClearLayers.setVisibility(View.GONE);
         restartMapRunnableImmediate();
     }
 
@@ -291,15 +326,46 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         }
     }
 
-    private void displayCardInfo(SpotDetectorModel detectorModel) {
+    private void displayCardInfo(SpotDetectorModel detectorModel, DirectionInfo directionInfo) {
         cardInfo.setVisibility(View.VISIBLE);
         name = findViewById(R.id.camera_name);
         address = findViewById(R.id.camera_address);
         emptySpots = findViewById(R.id.empty_spots);
 
         name.setText(detectorModel.getCameraName());
-        address.setText(detectorModel.getAddress());
-        emptySpots.setText(String.valueOf(detectorModel.getEmptySpots()));
+        address.setText(directionInfo.getEndName());
+        String value = getResources().getText(R.string.empty_spots) + " " + detectorModel.getEmptySpots();
+        emptySpots.setText(value);
+
+        String info = directionInfo.getDurationText() + ",  " + directionInfo.getDistanceText();
+        durationDistance.setText(info);
+        drawPolyline(directionInfo.getOverviewPolyline());
+    }
+
+    private void drawPolyline(String overviewPolyline) {
+        polylineOptions = new PolylineOptions();
+        List<LatLng> points = PolyUtil.decode(overviewPolyline);
+        LatLngBounds.Builder builder = new LatLngBounds.Builder();
+
+        for (LatLng latLng : points) {
+            polylineOptions.add(latLng);
+            builder.include(latLng);
+        }
+
+        polylineOptions.color(R.color.colorPrimaryDark);
+        polylineOptions.width(15f);
+        polylineOptions.geodesic(true);
+        polylines.add(mMap.addPolyline(polylineOptions));
+        mMap.animateCamera(CameraUpdateFactory.newLatLngBounds(builder.build(), 100));
+    }
+
+    private void clearPolyline() {
+        if (polylines != null && polylines.size() > 0) {
+            for (Polyline polyline : polylines) {
+                polyline.remove();
+            }
+            polylines.clear();
+        }
     }
 
     @Override
@@ -308,8 +374,19 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             case R.id.image_button_location:
                 follow();
                 break;
+            case R.id.image_button_clear_layers:
+                clearPolyline();
+                cardInfo.setVisibility(View.GONE);
+                imageButtonClearLayers.setVisibility(View.GONE);
+                break;
             default:
         }
 
     }
+
+    @Override
+    public void updateDirectionInfo(DirectionInfo directionInfo) {
+        displayCardInfo(currentDetector, directionInfo);
+    }
+
 }
