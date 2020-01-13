@@ -217,7 +217,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             String source = documentSnapshot != null && documentSnapshot.getMetadata().hasPendingWrites()
                 ? "Local" : "Server";
 
-            if (documentSnapshot != null && documentSnapshot.exists()) {
+            if (documentSnapshot != null && documentSnapshot.exists() && cardInfo.getVisibility() == View.VISIBLE) {
                 String value = getResources().getText(R.string.empty_spots) + " " + documentSnapshot.getData().get("count");
                 emptySpots.setText(value);
             } else {
