@@ -9,15 +9,18 @@ public class SpotDetectorModel {
     private int emptySpots;
     private LatLng cameraLocation;
     private Marker cameraMarker;
+    private String documentId;
 
     public SpotDetectorModel(String address,
                              String cameraName,
                              int emptySpots,
-                             LatLng cameraLocation) {
+                             LatLng cameraLocation,
+                             String documentId) {
         this.address = address;
         this.cameraName = cameraName;
         this.emptySpots = emptySpots;
         this.cameraLocation = cameraLocation;
+        this.documentId = documentId;
     }
 
     public String getAddress() {
@@ -58,5 +61,13 @@ public class SpotDetectorModel {
 
     public void setCameraMarker(Marker cameraMarker) {
         this.cameraMarker = cameraMarker;
+    }
+
+    public String getDocumentId() {
+        return documentId;
+    }
+
+    public void setDocumentId(String documentId) {
+        this.documentId = documentId;
     }
 }

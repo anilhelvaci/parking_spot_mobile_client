@@ -5,16 +5,17 @@ import android.graphics.Canvas;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.location.Location;
+import android.os.Bundle;
 import android.os.Handler;
+import android.util.Log;
 import android.view.View;
 import android.widget.ImageButton;
 import android.widget.TextView;
 import androidx.annotation.DrawableRes;
+import androidx.annotation.Nullable;
 import androidx.cardview.widget.CardView;
 import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.fragment.app.FragmentActivity;
-import android.os.Bundle;
-
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
@@ -33,6 +34,12 @@ import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.Polyline;
 import com.google.android.gms.maps.model.PolylineOptions;
 import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.firebase.firestore.CollectionReference;
+import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.EventListener;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.FirebaseFirestoreException;
+import com.google.firebase.firestore.ListenerRegistration;
 import com.google.maps.android.PolyUtil;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,6 +50,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                                                               View.OnClickListener,
                                                               GoogleMap.OnMarkerClickListener,
                                                               MapMvp.MapView {
+
+    private static final String TAG = "[FIRESTORE TAG]";
 
     private static final float                       INITIAL_ZOOM      = 9.1f;
     private static final float                       INITIAL_BEARING   = 0f;
@@ -93,10 +102,17 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     private DirectionInfo directionInfo;
 
+    private FirebaseFirestore   db;
+    private CollectionReference collectionReference;
+    private ListenerRegistration listenerRegistration;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_maps);
+
+        db = FirebaseFirestore.getInstance();
+        collectionReference = db.collection("empty_spots");
 
         mapPresenter = new MapPresenter();
         mapPresenter.setView(this);
@@ -181,13 +197,35 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             }
         };
 
-        cameraBahceli = new SpotDetectorModel("Bahcelievler 7. cadde", "7. CADDE", 5, bahceli);
-        cameraHome = new SpotDetectorModel("Arılık Sokak 4/5", "HOME", 0, home);
-        cameraArmada = new SpotDetectorModel("Dumlupınar Bulvarı", "Armada", 28, armada);
+        cameraBahceli = new SpotDetectorModel("Bahcelievler 7. cadde", "7. CADDE", 5, bahceli, "it6vQ8d16R9l0tra4DfD");
+        cameraHome = new SpotDetectorModel("Arılık Sokak 4/5", "HOME", 0, home, "lvuoG9WWLNyfGRZeHJkO");
+        cameraArmada = new SpotDetectorModel("Dumlupınar Bulvarı", "Armada", 28, armada, "x9f5k95yQRbUDKAPg77x");
         cameraMarkers.add(cameraBahceli);
         cameraMarkers.add(cameraHome);
         cameraMarkers.add(cameraArmada);
     }
+
+    private EventListener<DocumentSnapshot> eventListener = new EventListener<DocumentSnapshot>() {
+        @Override
+        public void onEvent(@Nullable DocumentSnapshot documentSnapshot,
+                            @Nullable FirebaseFirestoreException e) {
+            if (e != null) {
+                Log.w(TAG, "Listen failed.", e);
+                return;
+            }
+
+            String source = documentSnapshot != null && documentSnapshot.getMetadata().hasPendingWrites()
+                ? "Local" : "Server";
+
+            if (documentSnapshot != null && documentSnapshot.exists()) {
+                String value = getResources().getText(R.string.empty_spots) + " " + documentSnapshot.getData().get("count");
+                emptySpots.setText(value);
+            } else {
+                Log.d(TAG, source + " data: null");
+            }
+
+        }
+    };
 
     @Override
     public void onMapReady(GoogleMap mMap) {
@@ -208,7 +246,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     protected void onResume() {
         super.onResume();
         fusedLocationProviderClient.requestLocationUpdates(locationRequest, locationCallback, null);
-        follow();
+        if (cardInfo.getVisibility() == View.GONE) {
+            follow();
+        }
     }
 
     @Override
@@ -235,6 +275,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         }
         locationCallback = null;
         mMap = null;
+        listenerRegistration = null;
     }
 
     private void startLocationServices() {
@@ -268,12 +309,16 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         return false;
     }
 
+    private void removeEventListener() {
+        if (listenerRegistration != null) {
+            listenerRegistration.remove();
+        }
+    }
+
     private void follow() {
         myLocation.setImageResource(R.drawable.ic_my_location_found);
         isFollow = true;
-        cardInfo.setVisibility(View.GONE);
         clearPolyline();
-        imageButtonClearLayers.setVisibility(View.GONE);
         restartMapRunnableImmediate();
     }
 
@@ -340,6 +385,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         String info = directionInfo.getDurationText() + ",  " + directionInfo.getDistanceText();
         durationDistance.setText(info);
         drawPolyline(directionInfo.getOverviewPolyline());
+
+        listenerRegistration = collectionReference.document(detectorModel.getDocumentId()).addSnapshotListener(eventListener);
     }
 
     private void drawPolyline(String overviewPolyline) {
@@ -373,11 +420,15 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         switch (v.getId()){
             case R.id.image_button_location:
                 follow();
+                cardInfo.setVisibility(View.GONE);
+                imageButtonClearLayers.setVisibility(View.GONE);
+                removeEventListener();
                 break;
             case R.id.image_button_clear_layers:
                 clearPolyline();
                 cardInfo.setVisibility(View.GONE);
                 imageButtonClearLayers.setVisibility(View.GONE);
+                removeEventListener();
                 break;
             default:
         }
