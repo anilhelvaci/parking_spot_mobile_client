@@ -93,7 +93,7 @@ tools:context=".MainActivity"
                 android:textColor="@color/colorBlack"
                 android:textSize="14sp"
                 android:layout_marginTop="4dp"
-                android:layout_marginBottom="4dp"
+                android:layout_marginBottom="8dp"
                 android:layout_below="@+id/camera_address"
                 />
 
